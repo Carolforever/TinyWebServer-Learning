@@ -19,7 +19,7 @@ public:
         static Log instance;
         return &instance;
     }
-
+    //异步写的线程
     static void *flush_log_thread(void *args)
     {
         Log::get_instance()->async_write_log();

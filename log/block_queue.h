@@ -145,7 +145,7 @@ public:
         m_mutex.unlock();
         return true;
     }
-    //pop时,如果当前队列没有元素,将会等待条件变量
+    //pop时,如果当前队列没有元素,线程将会等待条件变量，直到被唤醒
     bool pop(T &item)
     {
 
@@ -160,7 +160,7 @@ public:
             }
         }
 
-        m_front = (m_front + 1) % m_max_size;
+        m_front = (m_front + 1) % m_max_size; //循环队列出队后调整头部位置
         item = m_array[m_front];
         m_size--;
         m_mutex.unlock();
@@ -178,7 +178,7 @@ public:
         {
             t.tv_sec = now.tv_sec + ms_timeout / 1000;
             t.tv_nsec = (ms_timeout % 1000) * 1000;
-            if (!m_cond.timewait(m_mutex.get(), t))
+            if (!m_cond.timewait(m_mutex.get(), t)) //使用timewait
             {
                 m_mutex.unlock();
                 return false;

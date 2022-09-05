@@ -18,7 +18,7 @@ class connection_pool
 public:
 	MYSQL *GetConnection();				 //获取数据库连接
 	bool ReleaseConnection(MYSQL *conn); //释放连接
-	int GetFreeConn();					 //获取连接
+	int GetFreeConn();					 //获取可用连接数量
 	void DestroyPool();					 //销毁所有连接
 
 	//单例模式
@@ -35,7 +35,7 @@ private:
 	int m_FreeConn; //当前空闲的连接数
 	locker lock;
 	list<MYSQL *> connList; //连接池
-	sem reserve;
+	sem reserve; //信号量用于表示连接数量
 
 public:
 	string m_url;			 //主机地址

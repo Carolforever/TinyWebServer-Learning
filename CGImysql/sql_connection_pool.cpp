@@ -9,13 +9,13 @@
 #include "sql_connection_pool.h"
 
 using namespace std;
-
+//构造函数
 connection_pool::connection_pool()
 {
 	m_CurConn = 0;
 	m_FreeConn = 0;
 }
-
+//懒汉模式获取实例
 connection_pool *connection_pool::GetInstance()
 {
 	static connection_pool connPool;
@@ -49,17 +49,17 @@ void connection_pool::init(string url, string User, string PassWord, string DBNa
 			LOG_ERROR("MySQL Error");
 			exit(1);
 		}
-		connList.push_back(con);
+		connList.push_back(con); //将处理好的mql连接放入连接池
 		++m_FreeConn;
 	}
 
-	reserve = sem(m_FreeConn);
+	reserve = sem(m_FreeConn); //设置信号量等于可用连接数
 
 	m_MaxConn = m_FreeConn;
 }
 
 
-//当有请求时，从数据库连接池中返回一个可用连接，更新使用和空闲连接数
+//当有请求时，从数据库连接池中取出一个可用连接，更新使用和空闲连接数
 MYSQL *connection_pool::GetConnection()
 {
 	MYSQL *con = NULL;
@@ -69,7 +69,7 @@ MYSQL *connection_pool::GetConnection()
 
 	reserve.wait();
 	
-	lock.lock();
+	lock.lock(); //注意上锁再取连接
 
 	con = connList.front();
 	connList.pop_front();
@@ -81,7 +81,7 @@ MYSQL *connection_pool::GetConnection()
 	return con;
 }
 
-//释放当前使用的连接
+//释放当前使用的连接，即重新将其放入连接池
 bool connection_pool::ReleaseConnection(MYSQL *con)
 {
 	if (NULL == con)
@@ -116,7 +116,6 @@ void connection_pool::DestroyPool()
 		m_FreeConn = 0;
 		connList.clear();
 	}
-
 	lock.unlock();
 }
 
@@ -131,6 +130,7 @@ connection_pool::~connection_pool()
 	DestroyPool();
 }
 
+//利用RAII将mysql连接和连接池指针都和connectionRAII类对象的生命周期绑定
 connectionRAII::connectionRAII(MYSQL **SQL, connection_pool *connPool){
 	*SQL = connPool->GetConnection();
 	
