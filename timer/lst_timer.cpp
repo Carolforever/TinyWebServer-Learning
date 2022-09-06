@@ -1,159 +1,130 @@
 #include "lst_timer.h"
 #include "../http/http_conn.h"
 
-sort_timer_lst::sort_timer_lst()
+timer_wheel::timer_wheel() //初始化时间轮，将各定时器链表置为空，当前槽为0
 {
-    head = NULL;
-    tail = NULL;
-}
-sort_timer_lst::~sort_timer_lst()
-{
-    util_timer *tmp = head; //析构函数删除整条定时器链表，即定时器容器
-    while (tmp)
-    {
-        head = tmp->next;
-        delete tmp;
-        tmp = head;
+    cur_slot = 0;
+    for(int i = 0; i < N; i++){
+        slots[i] = NULL;
     }
 }
-
-void sort_timer_lst::add_timer(util_timer *timer) //链表插入定时器
+timer_wheel::~timer_wheel() //删除所有定时器链表
+{
+   for(int i = 0; i < N; i++){
+        util_timer* tmp = slots[i];
+        while(tmp){
+            slots[i] = tmp->next;
+            delete tmp;
+            tmp = slots[i];
+        }
+   }
+}
+//将定时器插入时间轮
+void timer_wheel::add_timer(util_timer *timer) 
 {
     if (!timer)
     {
         return;
     }
-    if (!head) //定时器容器为空，直接放入容器
-    {
-        head = tail = timer;
+    int timeout = timer->expire;
+    if(timeout < 0){
         return;
     }
-    if (timer->expire < head->expire) //新定时器的超时时间比链表头还短，则成为新的头节点
-    {
-        timer->next = head;
-        head->prev = timer;
-        head = timer;
-        return;
+    int ticks = 0; //计算定时器需要滴答几次后触发
+    if(timeout < SI){
+        ticks = 1;
     }
-    add_timer(timer, head); //调用add_timer在链表中寻找合适位置插入
+    else{
+        ticks = timeout / SI;
+    }
+    int rotation = ticks / N; //计算定时器需要时间轮转动几圈后触发
+    int ts = (cur_slot + (ticks % N)) % N; //计算定时器所在的槽
+    timer->rotation = rotation;
+    timer->time_slot = ts;
+    //将定时器插入对应槽的定时器链表
+    if(!slots[ts]){ //若该链表为空
+        slots[ts] = timer;
+    }
+    else{ //不为空，则将timer设为头节点
+        timer->next = slots[ts];
+        slots[ts]->prev = timer;
+        slots[ts] = timer;
+    }
 }
-void sort_timer_lst::adjust_timer(util_timer *timer) //调整定时器在链表中的位置
+void timer_wheel::adjust_timer(util_timer *timer) //调整定时器位置
 {
     if (!timer)
     {
         return;
     }
-    util_timer *tmp = timer->next;
-    //被调整的定时器在链表尾部
-    //or 定时器超时值仍然小于下一个定时器超时值，不调整
-    if (!tmp || (timer->expire < tmp->expire))
-    {
-        return;
+    int ts = timer->time_slot; //该定时器位于槽ts
+    if(timer == slots[ts]){ //该定时器是ts槽定时器链表的头节点
+        slots[ts] = slots[ts]->next;
+        if(slots[ts]){
+            slots[ts]->prev = NULL;
+        }
+        add_timer(timer);
     }
-    //被调整定时器是链表头结点，将定时器取出，重新插入
-    if (timer == head)
-    {
-        head = head->next;
-        head->prev = NULL;
-        timer->next = NULL;
-        add_timer(timer, head);
-    }
-    //被调整定时器在内部，将定时器取出，重新插入
-    else
-    {
+    else{ //该定时器位于ts槽定时器链表中
         timer->prev->next = timer->next;
-        timer->next->prev = timer->prev;
-        add_timer(timer, timer->next);
+        if(timer->next){
+            timer->next->prev = timer->prev;
+        }
+        add_timer(timer);
     }
 }
-void sort_timer_lst::del_timer(util_timer *timer) //从链表中删除定时器
+void timer_wheel::del_timer(util_timer *timer) //从链表中删除定时器
 {
     if (!timer)
     {
         return;
     }
-    //链表中只有一个定时器
-    if ((timer == head) && (timer == tail)) 
-    {
-        delete timer;
-        head = NULL;
-        tail = NULL;
-        return;
-    }
-    //该定时器在链表头
-    if (timer == head)
-    {
-        head = head->next;
-        head->prev = NULL;
-        delete timer;
-        return;
-    }
-    //该定时器在链表尾
-    if (timer == tail)
-    {
-        tail = tail->prev;
-        tail->next = NULL;
-        delete timer;
-        return;
-    }
-    //该定时器在链表中
-    timer->prev->next = timer->next;
-    timer->next->prev = timer->prev;
-    delete timer;
-}
-void sort_timer_lst::tick() //定时任务处理函数
-{
-    if (!head)
-    {
-        return;
-    }
-    
-    time_t cur = time(NULL); //取得当前时间
-    util_timer *tmp = head;
-    while (tmp)
-    {
-        if (cur < tmp->expire) //当前时间早于遍历到的定时器的超时时间，则停止处理
-        {
-            break;
+    int ts = timer->time_slot;
+    if(timer = slots[ts]){ //该定时器是ts槽定时器链表的头节点
+        slots[ts] = slots[ts]->next;
+        if(slots[ts]){
+            slots[ts]->prev = NULL;
         }
-        tmp->cb_func(tmp->user_data); //当前定时器到期，则调用回调函数，执行定时事件
-        //处理完当前定时事件，则删除该定时器
-        head = tmp->next;
-        if (head)
-        {
-            head->prev = NULL;
+        delete timer;
+    }
+    else{ //该定时器位于ts槽定时器链表中
+        timer->prev->next = timer->next;
+        if(timer->next){
+            timer->next->prev = timer->prev;
         }
-        delete tmp;
-        tmp = head;
+        delete timer;
     }
 }
-//加入定时器，不考虑加入的定时器为头节点的情况
-void sort_timer_lst::add_timer(util_timer *timer, util_timer *lst_head)
+void timer_wheel::tick() //定时任务处理函数
 {
-    //利用前后指针进行插入
-    util_timer *prev = lst_head;
-    util_timer *tmp = prev->next;
-    while (tmp)
-    {
-        if (timer->expire < tmp->expire)
-        {
-            prev->next = timer;
-            timer->next = tmp;
-            tmp->prev = timer;
-            timer->prev = prev;
-            break;
+    util_timer* tmp = slots[cur_slot]; //取出时间轮当前槽定时器链表的头节点
+    while(tmp){
+        if(tmp->rotation > 0){ //定时器不是这一圈未超时
+            tmp->rotation--;
+            tmp = tmp->next;
         }
-        prev = tmp;
-        tmp = tmp->next;
+        else{ //定时器超时，执行定时任务并删除定时器
+            tmp->cb_func(tmp->user_data);
+            if(tmp == slots[cur_slot]){
+                slots[cur_slot] = tmp->next;
+                if(slots[cur_slot]){
+                    slots[cur_slot]->prev = NULL;
+                }
+                delete tmp;
+                tmp = slots[cur_slot];
+            }
+            else{
+                tmp->prev->next = tmp->next;
+                if(tmp->next){
+                    tmp->next->prev = tmp->prev;
+                }
+                util_timer* tmp2 = tmp->next;
+                delete tmp;
+                tmp = tmp2;
+            }
+        }
     }
-    //如果链表中所有定时器的超时时间都短于该定时器，该定时器成为尾部
-    if (!tmp)
-    {
-        prev->next = timer;
-        timer->prev = prev;
-        timer->next = NULL;
-        tail = timer;
-    }
+    cur_slot = ++cur_slot % N;
 }
 
 void Utils::init(int timeslot) //初始化alarm函数触发的时间间隔
@@ -219,7 +190,7 @@ void Utils::addsig(int sig, void(handler)(int), bool restart)
 //定时处理任务，重新定时以不断触发SIGALRM信号
 void Utils::timer_handler()
 {
-    m_timer_lst.tick(); //处理任务
+    m_timer_wheel.tick(); //处理任务
     alarm(m_TIMESLOT); //重新设定alarm
 }
 

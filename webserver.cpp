@@ -186,13 +186,13 @@ void WebServer::timer(int connfd, struct sockaddr_in client_address)
     //创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
     users_timer[connfd].address = client_address;
     users_timer[connfd].sockfd = connfd;
-    util_timer *timer = new util_timer;
+    util_timer *timer = new util_timer(0, 0);
     timer->user_data = &users_timer[connfd];
     timer->cb_func = cb_func; //将定时器类中的函数指针指向回调函数cb_func
     time_t cur = time(NULL);
     timer->expire = cur + 3 * TIMESLOT; //定时器向后延时三个单位
     users_timer[connfd].timer = timer;
-    utils.m_timer_lst.add_timer(timer); //将定时器插入链表
+    utils.m_timer_wheel.add_timer(timer); //将定时器插入链表
 }
 
 //若有数据传输，则将定时器往后延迟3个单位
@@ -201,7 +201,7 @@ void WebServer::adjust_timer(util_timer *timer)
 {
     time_t cur = time(NULL);
     timer->expire = cur + 3 * TIMESLOT;
-    utils.m_timer_lst.adjust_timer(timer);
+    utils.m_timer_wheel.adjust_timer(timer);
 
     LOG_INFO("%s", "adjust timer once");
 }
@@ -212,7 +212,7 @@ void WebServer::deal_timer(util_timer *timer, int sockfd)
     timer->cb_func(&users_timer[sockfd]); //调用回调函数从内核事件表中删除事件
     if (timer)
     {
-        utils.m_timer_lst.del_timer(timer); //从链表中删除定时器
+        utils.m_timer_wheel.del_timer(timer); //从链表中删除定时器
     }
 
     LOG_INFO("close fd %d", users_timer[sockfd].sockfd);
