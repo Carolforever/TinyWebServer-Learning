@@ -23,7 +23,9 @@
 
 #include <time.h>
 #include "../log/log.h"
-/* 双向链表实现定时器
+/* 双向链表实现定时器   
+//时间复杂度：添加定时器O(n)，删除定时器O(1)，执行定时任务O(1)
+
 class util_timer; //前向声明定时器类
 
 struct client_data //连接资源,绑定socket和定时器
@@ -111,6 +113,8 @@ void cb_func(client_data *user_data); //定时器回调函数
 
 
 //时间轮实现定时器//
+//时间复杂度：添加定时器O(1)，删除定时器O(1)，执行定时任务O(n)(事实上远好于O(n)，因为时间轮将定时器散列于链表上
+//槽数越多，每条链表上的定时器越少，使用多个时间轮能接近O(1))
 
 class util_timer; //前向声明定时器类
 

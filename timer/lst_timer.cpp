@@ -124,7 +124,7 @@ void timer_wheel::tick() //定时任务处理函数
             }
         }
     }
-    cur_slot = ++cur_slot % N;
+    cur_slot = ++cur_slot % N; //转动时间轮，即滴答一次
 }
 
 void Utils::init(int timeslot) //初始化alarm函数触发的时间间隔
